@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html data-ng-app="adbApp" ng-csp>
+  <head>
+    <title>Device list</title>
+    <base target="_blank">
+    <style>
+    </style>
+    <script src="./angular.min.js" type="text/javascript"></script>
+  </head>
+  <body data-ng-controller="AdbController">
+    <button id="listen" ng-click="listenOnPort(5037)">Listen</button>
+    <button id="requestPermission" data-ng-click="requestPermission()" ng-show="needPermission">
+      Request permission
+    </button>
+    <button id="rescan" data-ng-click="rescan()">Rescan</button>
+
+    <ul>
+      <li data-ng-repeat="device in devices">
+        <a>{{device.vendorId}}:{{device.productId}}</a>
+      </li>
+    </ul>
+
+    <script src="devices.js"></script>
+  </body>
+</html>
