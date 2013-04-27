@@ -107,6 +107,7 @@
     this.data_length = 0;
     this.data_check = 0;
     this.magic = 0;
+    this.callback = null;
   }
 
   /**
@@ -209,6 +210,14 @@
   };
 
   /**
+   * Sets the callback to call once the packet has been sent.
+   * @this {AdbPacket}
+   */
+  AdbPacket.prototype.setCallback = function(callback) {
+    this.callback = callback;
+  };
+
+  /**
    * @const
    */
   var ADBMESSAGE_SIZE = 24;
@@ -282,6 +291,8 @@
     /** @private */
     this.currentlyWriting = false;
     /** @private */
+    this.onCnxn = null;
+    /** @private */
     this.onDisconnect = null;
     /** @private */
     this.interfaceNumber = -1;
@@ -295,12 +306,13 @@
     this.banner = "";
     /** @private */
     this.maxData = 4096;
+    th
   }
 
   /**
    * Starts the USB device communication.
    */
-  UsbDevice.prototype.initialize = function( callback ) {
+  UsbDevice.prototype.initialize = function(callback) {
     // TODO: rewrite chrome.usb to inspect interface descriptors
     this.interfaceNumber = ADB_INTERFACE;
     this.outputDescritor = OUTPUT;
@@ -308,8 +320,7 @@
 
     this.usb.claimInterface(this.device, this.interfaceNumber, function() {
       this._onDeviceRead();
-      this._sendConnectPacket();
-      callback();
+      this._sendConnectPacket(callback);
     }.bind(this));
   };
 
@@ -339,11 +350,7 @@
    */
   UsbDevice.prototype._enqueuePacket = function(packet) {
     console.log('enqueued header (msg=' + packet.command + ', magic=' + packet.magic);
-    this.queue.push(packet.toMessage());
-    if (packet.data_length) {
-      console.log('enqueued data (' + packet.data_length + ')');
-      this.queue.push(packet.data);
-    }
+    this.queue.push(packet);
 
     if (!this.currentlyWriting) {
       this.currentlyWriting = true;
@@ -353,15 +360,25 @@
 
   UsbDevice.prototype._handleConnect = function(version, maxData, array) {
     this.maxData = maxData;
-
+    console.log('CNXN processing');
     _arrayBufferToString(array, function(identity) {
       var parts = identity.split(":", 3);
       if (parts[0] === 'device') {
         this.serialNo = parts[1];
         this.banner = parts[2];
         this.state = UsbState.ONLINE;
+        console.log('CNXN from ' + this.serialNo + ' ' + this.banner);
+        if (this.onCnxn !== null) {
+          this.onCnxn();
+        }
       }
     }.bind(this));
+  };
+
+  UsbDevice.prototype._handleAuth = function(version, array) {
+    console.log('AUTH processing');
+    var signed = this.auth.sign(array);
+    this._sendAuthPacket(ADB_AUTH_TOKEN, signed);
   };
 
   /**
@@ -369,11 +386,13 @@
    * @param {AdbPacket} packet
    */
   UsbDevice.prototype._receiveMessage = function(packet) {
+    console.log('READ command ' + packet.command);
     switch ( packet.command ) {
       case A_CNXN:
         this._handleConnect(packet.arg0, packet.arg1, packet.data);
         break;
       case A_AUTH:
+        this._handleAuth(packet.arg0, packet.data);
         break;
       case A_OPEN:
         break;
@@ -408,13 +427,14 @@
    * Sends the USB "CNXN" packet.
    * @private
    */
-  UsbDevice.prototype._sendConnectPacket = function() {
+  UsbDevice.prototype._sendConnectPacket = function(callback) {
     var message = new AdbPacket();
     message.setCommand(A_CNXN);
     message.arg0 = A_VERSION;
     message.arg1 = 4096;
     // "host::\0"
     message.setData(new Uint8Array([104, 111, 115, 116, 58, 58, 0]).buffer);
+    this.onCnxn = callback;
     this._enqueuePacket(message);
   };
 
@@ -427,6 +447,14 @@
     message.setCommand(A_OKAY);
     message.arg0 = this.ourId;
     message.arg1 = this.peerId;
+    this._enqueuePacket(message);
+  };
+
+  UsbDevice.prototype._sendAuthPacket = function(type, data) {
+    var message = new AdbPacket();
+    message.setCommand(A_AUTH);
+    message.arg0 = type;
+    message.setData(data);
     this._enqueuePacket(message);
   };
 
@@ -453,6 +481,24 @@
     }.bind(this));
   };
 
+  UsbDevice.prototype._sendDataArray = function( dataArray, callback ) {
+     var transferOut = {
+      'direction' : 'out',
+      'endpoint' : this.outputDescritor,
+      'data' : dataArray
+    };
+
+    this.usb.bulkTransfer(this.deviceId, transferOut, function(usbEvent) {
+      console.log('WROTE it; result=' + usbEvent.resultCode);
+      if (usbEvent.resultCode) {
+        console.log(chrome.runtime.lastError.message);
+        this._disconnect();
+      } else {
+        callback();
+      }
+    });
+  };
+
   /**
    * Loops over the current outgoing queue until it's empty.
    *
@@ -465,39 +511,25 @@
       return;
     }
 
-    var dataArray = this.queue.shift();
-    console.log('WRITE of length ' + dataArray.byteLength);
-    var transferOut = {
-      'direction' : 'out',
-      'endpoint' : this.outputDescritor,
-      'data' : dataArray
-    };
-
-    this.usb.bulkTransfer(this.deviceId, transferOut, function(usbEvent) {
-      console.log('WROTE it; result=' + usbEvent.resultCode);
-      if (usbEvent.resultCode) {
-        console.log(chrome.runtime.lastError.message);
-        this._disconnect();
+    var packet = this.queue.shift();
+    this._sendDataArray(packet.toMessage(), function() {
+      if (packet.data_length) {
+        console.log('enqueued data (' + packet.data_length + ')');
+        this._sendDataArray(packet.data, function() {
+          if (packet.callback !== null) {
+            packet.callback();
+          }
+          this._clearDeviceQueue();
+        }.bind(this));
       } else {
-        /* Do we need this?? */
-        /*
-         if ( !( dataArray.length & 1 ) ) {
-         var transferZero = {
-         'direction': 'out',
-         'endpoint': OUTPUT,
-         'data': new Uint8Array( [] ).buffer
-         };
-         this.usb.bulkTransfer( this.device, transferOut, function( usbEvent ) {
-         console.log( 'WROTE zero packet' );
-         this._clearDeviceQueue();
-         }.bind( this ) );
-         } else {
-         */
+        if (packet.callback !== null) {
+          packet.callback();
+        }
         this._clearDeviceQueue();
-        //}
       }
     }.bind(this));
   };
+
 
   UsbDevice.prototype._onDeviceRead = function() {
     console.log('scheduling read');
