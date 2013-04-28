@@ -639,7 +639,7 @@
     this.queue = [];
     this.currentlyWriting = false;
     this.id = new Monotonic().next();
-    this.peerId = 1;
+    this.peerId = -1;
   }
 
   /**
