@@ -63,10 +63,14 @@
    *            port The TCP port to listen to for ADB connections
    */
   function AdbServer(port) {
+    /** @private */
     this.port = port;
+    /** @private */
     this.server = new TcpServer('127.0.0.1', port, {});
+    /** @private */
     this.usb = chrome.usb;
-    console.log('listening');
+    /** @private */
+    this.sockets = [];
   }
 
   /**
@@ -89,6 +93,15 @@
   AdbServer.prototype._onAcceptCallback = function(tcpConnection) {
     var socket = new AdbSocket(this, tcpConnection);
     tcpConnection.addDataReceivedListener(socket._onDataReceived.bind(socket));
+    tcpConnection.callbacks.disconnect = socket._onDisconnect.bind(socket);
+    this.sockets.push(socket);
+  };
+
+  /**
+   * Used for testing.
+   */
+  AdbServer.prototype.addSocket = function(socket) {
+    this.sockets.push(socket);
   };
 
   AdbServer.prototype._rescan = function(callback) {
