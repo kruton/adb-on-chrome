@@ -164,7 +164,7 @@
    */
   AdbPacket.prototype.setCommand = function(command) {
     this.command = command;
-    this.magic = (command ^ 4294967295 ) >>> 0;
+    this.magic = (command ^ 0xFFFFFFFF ) >>> 0;
   };
 
   /**
