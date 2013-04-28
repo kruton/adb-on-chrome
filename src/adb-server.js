@@ -319,7 +319,6 @@
     this.banner = "";
     /** @private */
     this.maxData = 4096;
-    th
   }
 
   /**
