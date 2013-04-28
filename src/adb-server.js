@@ -407,6 +407,7 @@
         this._handleAuth(packet.arg0, packet.data);
         break;
       case A_OPEN:
+        this._sendClosePacket(0, packet.arg0);
         break;
       case A_CLSE:
         break;
@@ -462,11 +463,28 @@
     this._enqueuePacket(message);
   };
 
+  /**
+   * Sends the USB "AUTH" packet.
+   * @private
+   */
   UsbDevice.prototype._sendAuthPacket = function(type, data) {
     var message = new AdbPacket();
     message.setCommand(A_AUTH);
     message.arg0 = type;
     message.setData(data);
+    this._enqueuePacket(message);
+  };
+
+  /**
+   * Sends the USB "CLSE" packet.
+   * @private
+   */
+  UsbDevice.prototype._sendClosePacket = function(localId, remoteId, callback) {
+    var message = new AdbPacket();
+    message.setCommand(A_CLSE);
+    message.arg0 = localId;
+    message.arg1 = remoteId;
+    message.setCallback(callback);
     this._enqueuePacket(message);
   };
 
