@@ -710,6 +710,9 @@
   }
 
   /**
+   * Attempts to parse a command from an incoming message.
+   *
+   * @param {String} command incoming message to process
    * @private
    */
   AdbSocket.prototype._onMessageReceived = function(command) {
@@ -722,7 +725,7 @@
     } else if (command === "host:transport-any") {
       this.adb.getDevices(this._onTransportAny.bind(this));
     } else {
-      this.conn.sendMessage("FAIL" + lenPrefix("Unknown service"));
+      this.conn.sendMessage("FAIL" + lenPrefix("Unknown service: " + command));
     }
   };
 
