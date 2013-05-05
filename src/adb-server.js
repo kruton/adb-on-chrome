@@ -70,7 +70,9 @@
     /** @private */
     this.usb = chrome.usb;
     /** @private */
-    this.sockets = [];
+    this.devices = [];
+    /** @private */
+    this.sockets = {};
   }
 
   /**
@@ -94,18 +96,69 @@
     var socket = new AdbSocket(this, tcpConnection);
     tcpConnection.addDataReceivedListener(socket._onDataReceived.bind(socket));
     tcpConnection.callbacks.disconnect = socket._onDisconnect.bind(socket);
-    this.sockets.push(socket);
+    this.addSocket(socket);
   };
 
   /**
    * Used for testing.
    */
   AdbServer.prototype.addSocket = function(socket) {
-    this.sockets.push(socket);
+    this.sockets[socket.id] = socket;
+  };
+
+  /**
+   * Deletes a socket by ID from the server. Should only be called
+   * by the socket itself.
+   */
+  AdbServer.prototype.removeSocket = function(id) {
+    delete this.sockets[id];
   };
 
   AdbServer.prototype._rescan = function(callback) {
     this.usb.findDevices(DEVICE_INFO, callback);
+  };
+
+  /**
+   * Gets a list of UsbDevice currently discovered.
+   * 
+   * @this {AdbServer}
+   * @param {Function} function to call when call is completed
+   */
+  AdbServer.prototype.getDevices = function(callback) {
+    if (this.devices.length !== 0) {
+      callback(this.devices);
+      return;
+    }
+
+    this._rescan(function(devices) {
+      for (device in devices) {
+        this.devices.push(new UsbDevice(device, this));
+      }
+      callback(this.devices);
+    }.bind(this));
+  };
+
+  /**
+   * Gets the socket associated with the given socket ID.
+   *
+   * @this {AdbServer}
+   * @param {Number} ID of socket
+   */
+  AdbServer.prototype.getSocketById = function(id) {
+    return this.sockets[id];
+  };
+
+  /**
+   * Close a socket that this server is tracking.
+   *
+   * @this {AdbServer}
+   * @param {Number} ID of socket to close.
+   */
+  AdbServer.prototype.closeSocket = function(id) {
+    var socket = this.sockets[id];
+    if (socket !== null) {
+      socket.conn.disconnect();
+    }
   };
 
   /**
@@ -371,8 +424,8 @@
   };
 
   UsbDevice.prototype._handleConnect = function(version, maxData, array) {
-    this.maxData = maxData;
     console.log('CNXN processing');
+    this.maxData = maxData;
     _arrayBufferToString(array, function(identity) {
       var parts = identity.split(":", 3);
       if (parts[0] === 'device') {
@@ -407,9 +460,11 @@
         this._handleAuth(packet.arg0, packet.data);
         break;
       case A_OPEN:
+        // Devices can't open a connection to the host.
         this._sendClosePacket(0, packet.arg0);
         break;
       case A_CLSE:
+        this.adb.closeSocket(packet.arg1);
         break;
       case A_WRTE:
         break;
@@ -627,14 +682,22 @@
   /**
    * Creates an ADB socket instance.
    *
+   * @return {AdbSocket}
+   * @type {Object}
    * @constructor
    */
   function AdbSocket(adbServer, tcpConnection) {
+    /** @type {AdbServer} */
     this.adb = adbServer;
+    /** @type {TcpConnection} */
     this.conn = tcpConnection;
+    /** @type {String} */
     this.buffer = "";
+    /** @type {Number} */
     this.expected = -1;
+    /** @type {Function} */
     this._parser = this._addData.bind(this);
+    /** @type {Number} */
     this.device = -1;
     this.queue = [];
     this.currentlyWriting = false;
@@ -653,7 +716,7 @@
     } else if (command === "host:devices") {
       this.adb._rescan(this._onDevicesScanned.bind(this));
     } else if (command === "host:transport-any") {
-      this.adb._rescan(this._onTransportAny.bind(this));
+      this.adb.getDevices(this._onTransportAny.bind(this));
     } else {
       this.conn.sendMessage("FAIL" + lenPrefix("Unknown service"));
     }
@@ -691,6 +754,7 @@
     }
 
     this.device = devices[0];
+    /*
     this.usb.claimInterface(this.device, ADB_INTERFACE, function() {
       console.log("Claimed device " + this.device.handle);
       this.conn.sendMessage("OKAY");
@@ -701,6 +765,11 @@
       this._sendConnectPacket();
       this._sendOpenPacket(++this.ourId, "shell:");
     }.bind(this));
+    */
+    this.device.initialize(function() {
+      console.log("Claimed device " + this.device.device.handle);
+      this.conn.sendMessage("OKAY");
+    }.bind(this));
   };
 
   AdbSocket.prototype._fail = function(msg) {
@@ -709,6 +778,10 @@
 
   AdbSocket.prototype._onDataReceived = function(text) {
     this._parser(text);
+  };
+
+  AdbSocket.prototype._onDisconnect = function(text) {
+    this.adb.removeSocket(this.id);
   };
 
   AdbSocket.prototype._addData = function(text) {
@@ -774,6 +847,8 @@
 
   /**
    * Wrapper function for error console.logging
+   *
+   * @param {String} msg message to write to console.
    */
   function error(msg) {
     console.error(msg);
@@ -781,6 +856,9 @@
 
   /**
    * Adds the ADB length prefix to the string.
+   *
+   * @param {String} msg Message to prefix
+   * @return {String} message with length prefix at beginning
    */
   function lenPrefix(msg) {
     var lenStr = msg.length.toString(16);

@@ -261,11 +261,20 @@ const DEFAULT_MAX_CONNECTIONS=5;
    * @param {Object} readInfo The incoming message
    */
   TcpConnection.prototype._onDataRead = function(readInfo) {
-    // Call received callback if there's data in the response.
-    if (readInfo && readInfo.resultCode > 0 && this.callbacks.recv) {
-      log('onDataRead');
-      // Convert ArrayBuffer to string.
-      _arrayBufferToString(readInfo.data, this.callbacks.recv.bind(this));
+    if (readInfo) {
+      // Call received callback if there's data in the response.
+      if (readInfo.resultCode > 0) {
+        log('onDataRead(' + this.socketId + ') read data');
+        if (this.callbacks.recv) {
+          // Convert ArrayBuffer to string.
+          _arrayBufferToString(readInfo.data, this.callbacks.recv.bind(this));
+        }
+      } else {
+        log('onDataRead(' + this.socketId + ') disconnected result=' + readInfo.resultCode);
+        if (this.callbacks.disconnect) {
+          this.callbacks.disconnect();
+        }
+      }
     }
     socket.read(this.socketId, null, this._onDataRead.bind(this));
   };
