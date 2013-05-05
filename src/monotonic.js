@@ -6,12 +6,19 @@
   /**
    * A monotonic counter.
    *
+   * @returns {Monotonic}
+   * @type {Object}
    * @constructor
    */
   function Monotonic() {
     if (Monotonic.prototype._singletonInstance) {
       return Monotonic.prototype._singletonInstance;
     }
+
+    /**
+     * @private
+     * @type {Monotonic}
+     */
     Monotonic.prototype._singletonInstance = this;
 
     /**
@@ -25,7 +32,7 @@
    * Returns the next item in the counter.
    *
    * @this {Monotonic}
-   * @return {number} next monotonic number
+   * @return {Number} next monotonic number
    */
   Monotonic.prototype.next = function() {
     var num = this.counter++;
@@ -39,6 +46,7 @@
    * Sets the counter for testing. Visible for testing.
    *
    * @this {Monotonic}
+   * @param {Number} counter the value to set the counter to
    */
   Monotonic.prototype.setCounter = function(counter) {
     this.counter = counter;

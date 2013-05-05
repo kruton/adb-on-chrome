@@ -699,9 +699,13 @@
     this._parser = this._addData.bind(this);
     /** @type {Number} */
     this.device = -1;
+    /** @type {Array} */
     this.queue = [];
+    /** @type {Boolean} */
     this.currentlyWriting = false;
+    /** @type {Number} */
     this.id = new Monotonic().next();
+    /** @type {Number} */
     this.peerId = -1;
   }
 
