@@ -1,11 +1,13 @@
 var server;
 
-chrome.app.runtime.onLaunched.addListener(function() {
-  chrome.app.window.create('devices.html', {
-    width : 400,
-    height : 400
+if (chrome.app.runtime !== undefined) {
+  chrome.app.runtime.onLaunched.addListener(function () {
+    chrome.app.window.create('devices.html', {
+      width: 400,
+      height: 400
+    });
   });
-});
+}
 
 function isServerRunning() {
   if (server) {

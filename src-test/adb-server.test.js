@@ -277,8 +277,7 @@ TestCase("MonotonicTest", {
     assertEquals(0xFFFFFFFF, new Monotonic().next());
     assertEquals(1, new Monotonic().next());
   }
-}); 
-
+});
 
 TestCase('AuthManagerTest', {
   'setUp' : function() {
