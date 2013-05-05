@@ -16,18 +16,20 @@ limitations under the License.
 Author: Renato Mangini (mangini@chromium.org)
 */
 
-const DEFAULT_MAX_CONNECTIONS=5;
+/**
+ * Maximum number of connections allowed.
+ * @const
+ * @type {Number}
+ */
+var DEFAULT_MAX_CONNECTIONS = 5;
 
 (function(exports) {
-
-  // Define some local variables here.
-  var socket = chrome.socket || chrome.experimental.socket;
-
   /**
    * Creates an instance of the client
    *
-   * @param {String} host The remote host to connect to
+   * @param {String} addr The remote host to connect to
    * @param {Number} port The port to connect to at the remote host
+   * @param {Object=} options Options to use for the server
    */
   function TcpServer(addr, port, options) {
     this.addr = addr;
@@ -62,7 +64,7 @@ const DEFAULT_MAX_CONNECTIONS=5;
    * preferred network as the addr parameter on TcpServer contructor.
    */
   TcpServer.getNetworkAddresses=function(callback) {
-    socket.getNetworkList(callback);
+    chrome.socket.getNetworkList(callback);
   }
 
   TcpServer.prototype.isConnected=function() {
@@ -78,7 +80,7 @@ const DEFAULT_MAX_CONNECTIONS=5;
   TcpServer.prototype.listen = function(callback) {
     // Register connect callback.
     this.callbacks.connect = callback;
-    socket.create('tcp', {}, this._onCreate.bind(this));
+    chrome.socket.create('tcp', {}, this._onCreate.bind(this));
   };
 
 
@@ -88,7 +90,7 @@ const DEFAULT_MAX_CONNECTIONS=5;
    * @see http://developer.chrome.com/trunk/apps/socket.html#method-disconnect
    */
   TcpServer.prototype.disconnect = function() {
-    if (this.serverSocketId) socket.disconnect(this.serverSocketId);
+    if (this.serverSocketId) chrome.socket.disconnect(this.serverSocketId);
     this.serverSocketId=0;
   };
 
@@ -104,7 +106,7 @@ const DEFAULT_MAX_CONNECTIONS=5;
   TcpServer.prototype._onCreate = function(createInfo) {
     this.serverSocketId = createInfo.socketId;
     if (this.serverSocketId > 0) {
-      socket.listen(this.serverSocketId, this.addr, this.port, null, 
+      chrome.socket.listen(this.serverSocketId, this.addr, this.port, null,
         this._onListenComplete.bind(this));
       this.isListening = true;
     } else {
@@ -121,7 +123,7 @@ const DEFAULT_MAX_CONNECTIONS=5;
    */
   TcpServer.prototype._onListenComplete = function(resultCode) {
     if (resultCode===0) {
-      socket.accept(this.serverSocketId, this._onAccept.bind(this));
+      chrome.socket.accept(this.serverSocketId, this._onAccept.bind(this));
     } else {
       error('Unable to listen to socket. Resultcode='+resultCode);
     }
@@ -129,7 +131,7 @@ const DEFAULT_MAX_CONNECTIONS=5;
 
   TcpServer.prototype._onAccept = function(resultInfo) {
     // continue to accept other connections:
-    socket.accept(this.serverSocketId, this._onAccept.bind(this));
+    chrome.socket.accept(this.serverSocketId, this._onAccept.bind(this));
 
     if (resultInfo.resultCode===0) {
       var tcpConnection = new TcpConnection(resultInfo.socketId, this.callbacks.connect);
@@ -144,9 +146,9 @@ const DEFAULT_MAX_CONNECTIONS=5;
   TcpServer.prototype._onNoMoreConnectionsAvailable = function(socketId) {
     var msg="No more connections available. Try again later\n";
     _stringToArrayBuffer(msg, function(arrayBuffer) {
-      socket.write(socketId, arrayBuffer,
+      chrome.socket.write(socketId, arrayBuffer,
         function() {
-          socket.disconnect(socketId);
+          chrome.socket.disconnect(socketId);
         });
     });
   }
@@ -186,7 +188,7 @@ const DEFAULT_MAX_CONNECTIONS=5;
   };
 
   TcpConnection.prototype.requestSocketInfo = function(callback) {
-    socket.getInfo(this.socketId, 
+    chrome.socket.getInfo(this.socketId,
       this._onSocketInfo.bind(this, callback));
   };
 
@@ -206,11 +208,11 @@ const DEFAULT_MAX_CONNECTIONS=5;
    *
    * @see http://developer.chrome.com/trunk/apps/socket.html#method-write
    * @param {String} msg The message to send
-   * @param {Function} callback The function to call when the message has sent
+   * @param {Function=} callback The function to call when the message has sent
    */
   TcpConnection.prototype.sendMessage = function(msg, callback) {
     _stringToArrayBuffer(msg, function(arrayBuffer) {
-      socket.write(this.socketId, arrayBuffer, this._onWriteComplete.bind(this));
+      chrome.socket.write(this.socketId, arrayBuffer, this._onWriteComplete.bind(this));
     }.bind(this));
 
     // Register sent callback.
@@ -224,7 +226,7 @@ const DEFAULT_MAX_CONNECTIONS=5;
    * @see http://developer.chrome.com/trunk/apps/socket.html#method-disconnect
    */
   TcpConnection.prototype.disconnect = function() {
-    if (this.socketId) socket.disconnect(this.socketId);
+    if (this.socketId) chrome.socket.disconnect(this.socketId);
   };
 
 
@@ -276,7 +278,7 @@ const DEFAULT_MAX_CONNECTIONS=5;
         }
       }
     }
-    socket.read(this.socketId, null, this._onDataRead.bind(this));
+    chrome.socket.read(this.socketId, null, this._onDataRead.bind(this));
   };
 
 

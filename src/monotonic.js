@@ -53,4 +53,4 @@
   };
 
   exports.Monotonic = Monotonic;
-} )(window); 
+})(window);

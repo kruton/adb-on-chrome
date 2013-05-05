@@ -20,7 +20,7 @@ function AdbController($scope, $http) {
 
   $scope.devices = [];
 
-  $scope.server
+  $scope.server = null;
 
   $scope.rescan = function() {
     chrome.usb.findDevices(DEVICE_INFO, function(devices) {
@@ -29,7 +29,7 @@ function AdbController($scope, $http) {
         return;
       }
       console.log('Found ' + devices.length + ' device(s):');
-      for (var i in devices ) {
+      for (var i in devices) {
         console.log('Handle: ' + devices[i].handle);
       }
 
@@ -37,7 +37,7 @@ function AdbController($scope, $http) {
     });
   };
 
-  $scope.gotPermission = function(result) {
+  $scope.gotPermission = function() {
     $scope.needPermission = false;
     console.log('App was granted the "usbDevices" permission.');
     $scope.rescan();

@@ -77,11 +77,16 @@
 
   /**
    * Sets the USB stack for unit testing.
+   *
+   * @param {Object} usb Chrome's USB API
    */
   AdbServer.prototype.setUsb = function(usb) {
     this.usb = usb;
   };
 
+  /**
+   * Starts the ADB server and listens on TCP socket.
+   */
   AdbServer.prototype.start = function() {
     console.log('Started listening');
     this.server.listen(this._onAcceptCallback.bind(this));
@@ -122,7 +127,7 @@
    * Gets a list of UsbDevice currently discovered.
    * 
    * @this {AdbServer}
-   * @param {Function} function to call when call is completed
+   * @param {Function} callback function to call when call is completed
    */
   AdbServer.prototype.getDevices = function(callback) {
     if (this.devices.length !== 0) {
@@ -131,7 +136,7 @@
     }
 
     this._rescan(function(devices) {
-      for (device in devices) {
+      for (var device in devices) {
         this.devices.push(new UsbDevice(device, this));
       }
       callback(this.devices);
@@ -142,7 +147,7 @@
    * Gets the socket associated with the given socket ID.
    *
    * @this {AdbServer}
-   * @param {Number} ID of socket
+   * @param {Number} id ID of socket
    */
   AdbServer.prototype.getSocketById = function(id) {
     return this.sockets[id];
@@ -152,7 +157,7 @@
    * Close a socket that this server is tracking.
    *
    * @this {AdbServer}
-   * @param {Number} ID of socket to close.
+   * @param {Number} id ID of socket to close.
    */
   AdbServer.prototype.closeSocket = function(id) {
     var socket = this.sockets[id];
@@ -193,7 +198,7 @@
       this.data_check = u32[4];
       this.magic = u32[5];
       return true;
-    } catch ( ex ) {
+    } catch (ex) {
       return false;
     }
   };
@@ -205,7 +210,7 @@
    * @returns {Boolean} true if message and magic match
    */
   AdbPacket.prototype.isValid = function() {
-    var magic = (this.command ^ 0xFFFFFFFF ) >>> 0;
+    var magic = (this.command ^ 0xFFFFFFFF) >>> 0;
     return this.magic === magic;
   };
 
@@ -217,7 +222,7 @@
    */
   AdbPacket.prototype.setCommand = function(command) {
     this.command = command;
-    this.magic = (command ^ 0xFFFFFFFF ) >>> 0;
+    this.magic = (command ^ 0xFFFFFFFF) >>> 0;
   };
 
   /**
@@ -269,7 +274,6 @@
   /**
    * @this {AdbPacket}
    * @returns {Boolean} true if data checksums correctly.
-   * @private
    */
   AdbPacket.prototype.isDataValid = function() {
     return this._checksum(this.data) == this.data_check;
@@ -340,7 +344,7 @@
    * Represents a USB device.
    *
    * @constructor
-   * @param {Number} deviceId USB device handle
+   * @param {Number} device USB device handle
    * @param {AdbServer} mapper mapper of connection ID to TCP session
    */
   function UsbDevice(device, mapper) {
@@ -739,20 +743,31 @@
     this.conn.sendMessage("OKAY" + lenPrefix(msg));
   };
 
+  /**
+   * Writes data to the TCP socket.
+   * @this {AdbSocket}
+   * @param {String} text data to write to the TCP socket.
+   * @private
+   */
   AdbSocket.prototype._writeData = function(text) {
     console.log('enqueued: ' + text);
     _stringToArrayBuffer(text, function(dataArray) {
       var message = new AdbPacket();
       message.setCommand(A_WRTE);
-      message.arg0 = this.ourId;
+      message.arg0 = this.id;
       message.arg1 = this.peerId;
       message.setData(dataArray);
       this._enqueuePacket(message);
     }.bind(this));
   };
 
+  /**
+   *
+   * @param {Array.<UsbDevice>} devices
+   * @private
+   */
   AdbSocket.prototype._onTransportAny = function(devices) {
-    if (!devices || devices.length == 0) {
+    if (typeof devices !== "Array" || devices.length == 0) {
       this._fail("No devices");
       return;
     } else if (devices.length > 1) {
@@ -801,7 +816,7 @@
       return;
     }
 
-    if (this.expected == -1) {
+    if (this.expected === -1) {
       this.expected = parseInt(this.buffer.slice(0, 4), 16);
       if (isNaN(this.expected)) {
         console.log('invalid format; disconnecting');
