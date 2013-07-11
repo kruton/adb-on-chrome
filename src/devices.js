@@ -18,6 +18,7 @@ function AdbController($scope, $http) {
 
   $scope.gotPermission = function() {
     $scope.needPermission = false;
+    $scope.$apply();
     console.log('App was granted the "usbDevices" permission.');
     $scope.rescan();
   };
