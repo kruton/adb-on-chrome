@@ -8,6 +8,7 @@
     "background": {
       "scripts": [
         "src/tcp-server.js",
+        "lib/jsbn/jsbn.js",
         "lib/jsbn/jsbn2.js",
         "lib/jsbn/rsa.js",
         "lib/jsbn/rsa2.js",
