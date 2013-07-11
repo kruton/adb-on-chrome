@@ -18,7 +18,7 @@ var server;
 
 if (chrome.app.runtime !== undefined) {
   chrome.app.runtime.onLaunched.addListener(function () {
-    chrome.app.window.create('devices.html', {
+    chrome.app.window.create('src/devices.html', {
       width: 400,
       height: 400
     });
@@ -45,3 +45,5 @@ function startServer() {
   server = new AdbServer(5037);
   server.start();
 }
+
+startServer();
