@@ -25,7 +25,8 @@
   ],
   "optional_permissions": [
     {"usbDevices": [
-      {"vendorId": 6353, "productId": 20002}
+      {"vendorId": 6353, "productId": 20002},
+      {"vendorId": 6353, "productId": 20194}
     ]}
   ]
 }

@@ -25,7 +25,7 @@
     // Nexus 10
     {
       'vendorId' : 0x18D1,
-      'productId' : 0x4E22,
+      'productId' : 0x4EE2,
     }
   ];
 
