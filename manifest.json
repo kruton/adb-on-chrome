@@ -8,9 +8,9 @@
     "background": {
       "scripts": [
         "src/tcp-server.js",
-        "src/jsbn/jsbn2.js",
-        "src/jsbn/rsa.js",
-        "src/jsbn/rsa2.js",
+        "lib/jsbn/jsbn2.js",
+        "lib/jsbn/rsa.js",
+        "lib/jsbn/rsa2.js",
         "src/adb-server.js",
         "src/background.js"
       ]
