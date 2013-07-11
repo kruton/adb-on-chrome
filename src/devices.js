@@ -1,39 +1,18 @@
 var adbApp = angular.module('adbApp', []);
 
 function AdbController($scope, $http) {
-  var GOOGLE_VENDOR_ID = 0x18D1;
-  var ADB_PRODUCT_ID = 0x4EE2;
-  var NEXUS_S_PRODUCT_ID = 0x4E22;
+  $scope.server = null;
 
-  var DEVICE_INFO = {
-    "vendorId" : GOOGLE_VENDOR_ID,
-    "productId" : NEXUS_S_PRODUCT_ID
-  };
-
-  var permissionObj = {
-    permissions : [{
-      'usbDevices' : [DEVICE_INFO]
-    }]
-  };
+  $scope.permissionObj;
 
   $scope.needPermission = true;
 
   $scope.devices = [];
 
-  $scope.server = null;
-
-  $scope.rescan = function() {
-    chrome.usb.findDevices(DEVICE_INFO, function(devices) {
-      if (!devices || !devices.length) {
-        console.log('device not found');
-        return;
-      }
-      console.log('Found ' + devices.length + ' device(s):');
-      for (var i in devices) {
-        console.log('Handle: ' + devices[i].handle);
-      }
-
+  $scope.rescan = function(callback) {
+    $scope.server.getDevices(function(devices) {
       $scope.devices = devices;
+      $scope.$apply();
     });
   };
 
@@ -44,7 +23,7 @@ function AdbController($scope, $http) {
   };
 
   $scope.requestPermission = function() {
-    chrome.permissions.request(permissionObj, function(result) {
+    chrome.permissions.request($scope.permissionObj, function(result) {
       if (result) {
         $scope.gotPermission();
       } else {
@@ -60,9 +39,18 @@ function AdbController($scope, $http) {
     });
   };
 
-  chrome.permissions.contains(permissionObj, function(result) {
-    if (result) {
-      $scope.gotPermission();
-    }
+  chrome.runtime.getBackgroundPage(function(bgPage) {
+    $scope.server = bgPage.server;
+    $scope.permissionObj = {
+      permissions : [{
+        'usbDevices': $scope.server.getDeviceInfos()
+      }]
+    };
+
+    chrome.permissions.contains($scope.permissionObj, function(result) {
+      if (result) {
+        $scope.gotPermission();
+      }
+    });
   });
 }

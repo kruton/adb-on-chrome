@@ -97,6 +97,13 @@
   }
 
   /**
+   * Returns list of USB devices.
+   */
+  AdbServer.prototype.getDeviceInfos = function() {
+    return DEVICES.slice(0);
+  };
+
+  /**
    * Sets the USB stack for unit testing.
    *
    * @param {Object} usb Chrome's USB API
