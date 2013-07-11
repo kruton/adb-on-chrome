@@ -15,14 +15,19 @@
  */
 
 (function(exports) {
-  var GOOGLE_VENDOR_ID = 0x18D1;
-  var ADB_PRODUCT_ID = 0x4EE2;
-  var NEXUS_S_PRODUCT_ID = 0x4E22;
+  var DEVICES = [
+    // Nexus S
+    {
+      'vendorId' : 0x18D1,
+      'productId' : 0x4E22,
+    },
 
-  var DEVICE_INFO = {
-    'vendorId' : GOOGLE_VENDOR_ID,
-    'productId' : NEXUS_S_PRODUCT_ID
-  };
+    // Nexus 10
+    {
+      'vendorId' : 0x18D1,
+      'productId' : 0x4E22,
+    }
+  ];
 
   var INPUT = 136;
   // 0x88
@@ -68,7 +73,7 @@
 
   var permissionObj = {
     permissions : [{
-      'usbDevices' : [DEVICE_INFO]
+      'usbDevices' : DEVICES
     }]
   };
 
@@ -135,8 +140,51 @@
     delete this.sockets[id];
   };
 
+  AdbServer.prototype._scan_devices = function(device_infos, filtered, devices, callback) {
+    /* Base cases. */
+    if (devices.length == 0) {
+      if (device_infos.length == 0) {
+        /* No more device IDs or devices from a previous device ID to scan. */
+        callback(filtered);
+      } else {
+        /* We read all the devices for the previous ID. Scan a new one. */
+        var deviceInfo = deviceInfos.shift();
+        this.usb.findDevices(deviceInfo, function(devices) {
+          this._scan_devices(deviceInfos, [], devices, callback);
+        }.bind(this));
+      }
+    }
+
+    var device = devices.shift();
+    this.usb.listInterfaces(device, function(interfaces) {
+      for (var intf in interfaces) {
+        if (intf.interfaceClass === 0xFF && intf.interfaceSubclass === 0x42) {
+          var inAddress = -1;
+          var outAddress = -1;
+          for (var endpoint in intf.endpoints) {
+            if (endpoint.type === "bulk") {
+              if (endpoint.direction === "in") {
+                inAddress = endpoint.address;
+              } else {
+                outAddress = endpoint.address;
+              }
+            }
+          }
+          if (inAddress !== -1 && outAddress !== -1) {
+            filtered.push(new UsbDevice(device, this, intf.interfaceNumber, inAddress, outAddress));
+          }
+        }
+      }
+      this._scan_devices(device_infos, filtered, devices, callback);
+    }.bind(this));
+  };
+
+  /**
+   * Rescans the bus for known devices.
+   */
   AdbServer.prototype._rescan = function(callback) {
-    this.usb.findDevices(DEVICE_INFO, callback);
+    var deviceInfos = DEVICES.slice(0);
+    this._scan_devices(deviceInfos, [], [], callback);
   };
 
   /**
@@ -148,15 +196,9 @@
   AdbServer.prototype.getDevices = function(callback) {
     if (this.devices.length !== 0) {
       callback(this.devices);
-      return;
+    } else {
+      this._rescan(callback);
     }
-
-    this._rescan(function(devices) {
-      for (var device in devices) {
-        this.devices.push(new UsbDevice(device, this));
-      }
-      callback(this.devices);
-    }.bind(this));
   };
 
   /**
@@ -362,8 +404,10 @@
    * @constructor
    * @param {Number} device USB device handle
    * @param {AdbServer} mapper mapper of connection ID to TCP session
+   * @param {Number} inAddress endpoint address for input
+   * @param {Number} outAddress endpoint address for output
    */
-  function UsbDevice(device, mapper) {
+  function UsbDevice(device, mapper, interfaceNumber, inAddress, outAddress) {
     /** @private */
     this.usb = chrome.usb;
     /** @private */
@@ -381,11 +425,11 @@
     /** @private */
     this.onDisconnect = null;
     /** @private */
-    this.interfaceNumber = -1;
+    this.interfaceNumber = interfaceNumber;
     /** @private */
-    this.outputDescritor = -1;
+    this.outputDescriptor = outAddress;
     /** @private */
-    this.inputDescriptor = -1;
+    this.inputDescriptor = inAddress;
     /** @private */
     this.serialNo = "";
     /** @private */
@@ -398,11 +442,6 @@
    * Starts the USB device communication.
    */
   UsbDevice.prototype.initialize = function(callback) {
-    // TODO: rewrite chrome.usb to inspect interface descriptors
-    this.interfaceNumber = ADB_INTERFACE;
-    this.outputDescritor = OUTPUT;
-    this.inputDescriptor = INPUT;
-
     this.usb.claimInterface(this.device, this.interfaceNumber, function() {
       this._onDeviceRead();
       this._sendConnectPacket(callback);
