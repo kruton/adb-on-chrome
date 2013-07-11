@@ -147,10 +147,10 @@
     delete this.sockets[id];
   };
 
-  AdbServer.prototype._scan_devices = function(device_infos, filtered, devices, callback) {
+  AdbServer.prototype._scan_devices = function(deviceInfos, filtered, devices, callback) {
     /* Base cases. */
     if (devices.length == 0) {
-      if (device_infos.length == 0) {
+      if (deviceInfos.length == 0) {
         /* No more device IDs or devices from a previous device ID to scan. */
         callback(filtered);
       } else {
@@ -160,15 +160,18 @@
           this._scan_devices(deviceInfos, [], devices, callback);
         }.bind(this));
       }
+      return;
     }
 
     var device = devices.shift();
     this.usb.listInterfaces(device, function(interfaces) {
-      for (var intf in interfaces) {
+      for (var intfIndex in interfaces) {
+        var intf = interfaces[intfIndex];
         if (intf.interfaceClass === 0xFF && intf.interfaceSubclass === 0x42) {
           var inAddress = -1;
           var outAddress = -1;
-          for (var endpoint in intf.endpoints) {
+          for (var endIdx in intf.endpoints) {
+            var endpoint = intf.endpoints[endIdx];
             if (endpoint.type === "bulk") {
               if (endpoint.direction === "in") {
                 inAddress = endpoint.address;
@@ -182,7 +185,7 @@
           }
         }
       }
-      this._scan_devices(device_infos, filtered, devices, callback);
+      this._scan_devices(deviceInfos, filtered, devices, callback);
     }.bind(this));
   };
 
