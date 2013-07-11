@@ -135,6 +135,21 @@ TestCase("AdbSocketTest", {
   }
 });
 
+TestCase("AdbServerTest", {
+  'test AdbServer getSocketById' : function() {
+    var sock1 = new AdbSocket();
+    var sock2 = new AdbSocket();
+
+    var server = new AdbServer();
+
+    server.addSocket(sock1);
+    server.addSocket(sock2);
+
+    assertEquals("sock1", sock1, server.getSocketById(sock1.id));
+    assertEquals("sock2", sock2, server.getSocketById(sock2.id));
+  }
+});
+
 TestCase("UsbDeviceTest", {
     'setUp': function() {
         this.cnxnRequest = new Uint8Array( [
