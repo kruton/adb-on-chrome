@@ -2122,6 +2122,65 @@ ChromeEvent.prototype.hasListener = function(callback) {};
 ChromeEvent.prototype.hasListeners = function(callback) {};
 
 
+chrome.usb = {};
+
+/**
+ * @param {UsbOptions} options
+ * @param {function(Array.<UsbDevice>): void} callback
+ */
+chrome.usb.findDevices = function(options, callback) {};
+
+/**
+ * @param {UsbDevice} device
+ * @param {function(Array.<InterfaceDescriptor>): void} callback
+ */
+chrome.usb.listInterfaces = function(device, callback) {};
+
+/**
+ * @see http://code.google.com/chrome/extensions/usb.html
+ * @constructor
+ */
+function UsbDevice() {}
+
+/** @type {integer} */
+UsbDevice.prototype.handle;
+
+/** @type {integer} */
+UsbDevice.prototype.vendorId;
+
+/** @type {integer} */
+UsbDevice.prototype.productId;
+
+
+/**
+ * @see http://code.google.com/chrome/extensions/usb.html
+ * @constructor
+ */
+function InterfaceDescriptor() {}
+
+/** @type {integer} */
+InterfaceDescriptor.prototype.interfaceNumber;
+
+/** @type {integer} */
+InterfaceDescriptor.prototype.alternateSetting;
+
+/** @type {integer} */
+InterfaceDescriptor.prototype.interfaceClass;
+
+/** @type {integer} */
+InterfaceDescriptor.prototype.interfaceSubclass;
+
+/** @type {integer} */
+InterfaceDescriptor.prototype.interfaceProtocol;
+
+/** @type {string} */
+InterfaceDescriptor.prototype.description;
+
+/** @type {Array.<EndpointDescriptor>} */
+InterfaceDescriptor.prototype.endpoints;
+
+
+
 /**
  * @see http://developer.chrome.com/extensions/pushMessaging.html
  * @const
