@@ -12,12 +12,19 @@
         "lib/jsbn/jsbn2.js",
         "lib/jsbn/rsa.js",
         "lib/jsbn/rsa2.js",
+        "lib/jsbn/prng4.js",
+        "lib/jsbn/rng.js",
+        "lib/jsbn/base64.js",
+        "lib/Hydrate.js",
+        "src/monotonic.js",
+        "src/auth-manager.js",
         "src/adb-server.js",
         "src/background.js"
       ]
     }
   },
   "permissions": [
+    "storage",
     "usb",
     {"socket": [
       "tcp-listen::5037"

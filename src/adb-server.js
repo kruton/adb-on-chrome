@@ -136,6 +136,7 @@
    * Used for testing.
    */
   AdbServer.prototype.addSocket = function(socket) {
+    console.log('AdbServer adding socket ' + socket.id);
     this.sockets[socket.id] = socket;
   };
 
@@ -421,6 +422,8 @@
     /** @private */
     this.usb = chrome.usb;
     /** @private */
+    this.auth = new AuthManager();
+    /** @private */
     this.device = device;
     /** @private */
     this.mapper = mapper;
@@ -452,9 +455,13 @@
    * Starts the USB device communication.
    */
   UsbDevice.prototype.initialize = function(callback) {
-    this.usb.claimInterface(this.device, this.interfaceNumber, function() {
-      this._onDeviceRead();
-      this._sendConnectPacket(callback);
+    this.auth.initialize(function() {
+      console.log('Trying to claim USB interface ' + this.interfaceNumber);
+      this.usb.claimInterface(this.device, this.interfaceNumber, function() {
+        console.log('Claimed USB interface ' + this.interfaceNumber);
+        this._onDeviceRead();
+        this._sendConnectPacket(callback);
+      }.bind(this));
     }.bind(this));
   };
 
@@ -509,10 +516,59 @@
     }.bind(this));
   };
 
-  UsbDevice.prototype._handleAuth = function(version, array) {
-    console.log('AUTH processing');
-    var signed = this.auth.sign(array);
-    this._sendAuthPacket(ADB_AUTH_TOKEN, signed);
+  UsbDevice.prototype._handleAuth = function(type, array) {
+    console.log('AUTH processing: ' + type);
+    if (type == ADB_AUTH_TOKEN) {
+      if (this.authSent) {
+        this.authSent = false;
+        console.log('Sending public key');
+        _stringToArrayBuffer(this.auth.key_public, function(dataArray) {
+          var dataArrayPlusNull = new Uint8Array(dataArray.byteLength + 1);
+          dataArrayPlusNull.set(new Uint8Array(dataArray));
+          dataArrayPlusNull[dataArray.byteLength] = 0;
+          this._sendAuthPacket(ADB_AUTH_RSAPUBLICKEY, dataArrayPlusNull.buffer);
+        }.bind(this));
+      } else {
+        console.log('Signing token for auth');
+        this.authSent = true;
+        var signed = this.auth.sign(array);
+        this._sendAuthPacket(ADB_AUTH_SIGNATURE, signed);
+      }
+    } else {
+      console.log('Unknown AUTH type not implemented');
+    }
+  };
+
+  UsbDevice.prototype._writeToSocket = function(socketId, data) {
+    var socket = this.mapper.getSocketById(socketId);
+    if (socket === undefined) {
+      console.log("Cannot find socket id " + socketId);
+      return;
+    }
+
+    _arrayBufferToString(data, function(text) {
+      socket.conn.sendMessage(text);
+    });
+  };
+
+  UsbDevice.prototype._closeSocket = function(socketId) {
+    var socket = this.mapper.getSocketById(socketId);
+    if (socket === undefined) {
+      console.log("Cannot find socket id " + socketId);
+      return;
+    }
+
+    socket.disconnect();
+  };
+
+  UsbDevice.prototype._setSocketPeerId = function(socketId, peerId) {
+    var socket = this.mapper.getSocketById(socketId);
+    if (socket === undefined) {
+      console.log("Cannot find socket id " + socketId);
+      return;
+    }
+
+    socket.peerId = peerId;
   };
 
   /**
@@ -533,13 +589,19 @@
         this._sendClosePacket(0, packet.arg0);
         break;
       case A_CLSE:
-        this.adb.closeSocket(packet.arg1);
+        this._closeSocket(packet.arg1);
         break;
       case A_WRTE:
+        console.log('WRTE from USB id ' + packet.arg0 + ' to socket ' + packet.arg1);
+        this._writeToSocket(packet.arg1, packet.data);
+        this._sendOkayPacket(packet.arg1, packet.arg0);
         break;
       case A_OKAY:
+        console.log('OKAY not implemented peer=' + packet.arg0 + ', local=' + packet.arg1);
+        this._setSocketPeerId(packet.arg1, packet.arg0);
         break;
       default:
+        console.log('unknown command; disconnecting!');
         this._disconnect();
     }
   };
@@ -548,13 +610,13 @@
    * @param {String} text the text string to write to device
    * @private
    */
-  UsbDevice.prototype._writeData = function(text) {
+  UsbDevice.prototype._writeData = function(socketId, remoteId, text) {
     console.log('enqueued: ' + text);
     _stringToArrayBuffer(text, function(dataArray) {
       var message = new AdbPacket();
       message.setCommand(A_WRTE);
-      message.arg0 = this.ourId;
-      message.arg1 = this.peerId;
+      message.arg0 = socketId;
+      message.arg1 = remoteId;
       message.setData(dataArray);
       this._enqueuePacket(message);
     }.bind(this));
@@ -579,11 +641,11 @@
    * Sends the USB "OKAY" packet.
    * @private
    */
-  UsbDevice.prototype._sendOkayPacket = function() {
+  UsbDevice.prototype._sendOkayPacket = function(socketId, peerId) {
     var message = new AdbPacket();
     message.setCommand(A_OKAY);
-    message.arg0 = this.ourId;
-    message.arg1 = this.peerId;
+    message.arg0 = socketId;
+    message.arg1 = peerId;
     this._enqueuePacket(message);
   };
 
@@ -619,7 +681,7 @@
    * @private
    */
   UsbDevice.prototype._sendOpenPacket = function(ourId, service) {
-    console.log('sending open packet for service ' + service);
+    console.log('sending open packet for service ' + service + ' as id ' + ourId);
 
     _stringToArrayBuffer(service, function(serviceArray) {
       var terminated = new Uint8Array(serviceArray.byteLength + 1);
@@ -638,11 +700,11 @@
   UsbDevice.prototype._sendDataArray = function( dataArray, callback ) {
      var transferOut = {
       'direction' : 'out',
-      'endpoint' : this.outputDescritor,
+      'endpoint' : this.outputDescriptor,
       'data' : dataArray
     };
 
-    this.usb.bulkTransfer(this.deviceId, transferOut, function(usbEvent) {
+    this.usb.bulkTransfer(this.device, transferOut, function(usbEvent) {
       console.log('WROTE it; result=' + usbEvent.resultCode);
       if (usbEvent.resultCode) {
         console.log(chrome.runtime.lastError.message);
@@ -809,30 +871,12 @@
   };
 
   /**
-   * Writes data to the TCP socket.
-   * @this {AdbSocket}
-   * @param {String} text data to write to the TCP socket.
-   * @private
-   */
-  AdbSocket.prototype._writeData = function(text) {
-    console.log('enqueued: ' + text);
-    _stringToArrayBuffer(text, function(dataArray) {
-      var message = new AdbPacket();
-      message.setCommand(A_WRTE);
-      message.arg0 = this.id;
-      message.arg1 = this.peerId;
-      message.setData(dataArray);
-      this._enqueuePacket(message);
-    }.bind(this));
-  };
-
-  /**
    *
    * @param {Array.<UsbDevice>} devices
    * @private
    */
   AdbSocket.prototype._onTransportAny = function(devices) {
-    if (typeof devices !== "Array" || devices.length == 0) {
+    if (typeof devices !== "object" || devices.length == 0) {
       this._fail("No devices");
       return;
     } else if (devices.length > 1) {
@@ -841,22 +885,22 @@
     }
 
     this.device = devices[0];
-    /*
-    this.usb.claimInterface(this.device, ADB_INTERFACE, function() {
-      console.log("Claimed device " + this.device.handle);
-      this.conn.sendMessage("OKAY");
-
-      this._parser = this._writeData.bind(this);
-      this._onDeviceRead();
-
-      this._sendConnectPacket();
-      this._sendOpenPacket(++this.ourId, "shell:");
-    }.bind(this));
-    */
     this.device.initialize(function() {
       console.log("Claimed device " + this.device.device.handle);
+      this._onMessageReceived = this._receiveServiceName.bind(this);
       this.conn.sendMessage("OKAY");
     }.bind(this));
+  };
+
+  AdbSocket.prototype._receiveServiceName = function(text) {
+    this._parser = this._parserForWrite.bind(this);
+    this.device._sendOpenPacket(this.id, text);
+    this.conn.sendMessage('OKAY');
+  };
+
+  AdbSocket.prototype._parserForWrite = function(text) {
+    console.log('Write from ' + this.id + ' to ' + this.peerId + ': ' + text);
+    this.device._writeData(this.id, this.peerId, text);
   };
 
   AdbSocket.prototype._fail = function(msg) {
@@ -871,8 +915,12 @@
     this.adb.removeSocket(this.id);
   };
 
+  AdbSocket.prototype.disconnect = function() {
+    this.tcpConnection.disconnect();
+  };
+
   AdbSocket.prototype._addData = function(text) {
-    console.log('read ' + text.length + ' bytes: ' + text);
+    console.log('read ' + text.length + ' bytes: ' + text + ' (expected: ' + this.expected + ')');
 
     this.buffer += text;
 
@@ -895,6 +943,7 @@
     if (readSoFar >= this.expected) {
       console.log('read all expected data');
       var end = this.expected + 4;
+      this.expected = -1;
       this._onMessageReceived(this.buffer.slice(4, end));
       this.buffer = this.buffer.slice(end);
     }

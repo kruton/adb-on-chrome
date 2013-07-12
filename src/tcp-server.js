@@ -275,6 +275,7 @@ var DEFAULT_MAX_CONNECTIONS = 5;
         log('onDataRead(' + this.socketId + ') disconnected result=' + readInfo.resultCode);
         if (this.callbacks.disconnect) {
           this.callbacks.disconnect();
+          return;
         }
       }
     }

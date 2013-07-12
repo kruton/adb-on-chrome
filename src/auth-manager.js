@@ -49,6 +49,13 @@
   // RSA_F4 in hex
 
   /**
+   * When signing, we need to stick this in front to encode that it's a SHA-1 signature.
+   *
+   * @const
+   */
+  var ASN1_PREAMBLE = [0x00, 0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2B, 0x0E, 0x03, 0x02, 0x1A, 0x05, 0x00, 0x04, 0x14];
+
+  /**
    * Manages the storage and retrieval of the RSA keypair used. Generates the
    * key on demand if needed.
    *
@@ -57,9 +64,11 @@
    */
   function AuthManager() {
     /** @private */
-    this.key_private = null;
+    this.key_private = undefined;
     /** @private */
-    this.key_public = null;
+    this.key_public = undefined;
+    /** @private */
+    this.storage = chrome.storage.local;
   }
 
   /**
@@ -76,27 +85,55 @@
   }
 
   /**
+   * Saves the keys currently set.
+   *
+   * @this {AuthManager}
+   */
+  AuthManager.prototype._saveKeys = function(callback) {
+    var hydrate = new Hydrate(new Hydrate.ContextResolver(exports));
+    var dict = {};
+    dict[RSA_PRIVATE_INDEX] = hydrate.stringify(this.key_private);
+    dict[RSA_PUBLIC_INDEX] = hydrate.stringify(this.key_public);
+    this.storage.set(dict, callback);
+  };
+
+  /**
+   * Loads keys from storage set.
+   *
+   * @this {AuthManager}
+   */
+  AuthManager.prototype._loadKeys = function(callback) {
+    var hydrate = new Hydrate(new Hydrate.ContextResolver(exports));
+
+    this.storage.get([RSA_PRIVATE_INDEX, RSA_PUBLIC_INDEX], function(values) {
+      this.key_private = hydrate.parse(values[RSA_PRIVATE_INDEX]);
+      this.key_public = hydrate.parse(values[RSA_PUBLIC_INDEX]);
+      callback();
+    }.bind(this));
+  };
+
+  /**
    * Initializes the AuthManager from local storage. Generates new keys if
    * none are available.
    *
    * @this {AuthManager}
    */
-  AuthManager.prototype.initialize = function() {
-    this.key_private = localStorage.getObject(RSA_PRIVATE_INDEX);
-    this.key_public = localStorage.getObject(RSA_PUBLIC_INDEX);
+  AuthManager.prototype.initialize = function(callback) {
+    this._loadKeys(function() {
+      if (this.key_private !== undefined) {
+        callback();
+      } else {
+        var key = new RSAKey();
 
-    if (this.key_private == null) {
-      var key = new RSAKey();
+        seedRng();
+        key.generate(RSA_BITS, RSA_EXPONENT);
 
-      seedRng();
-      key.generate(RSA_BITS, RSA_EXPONENT);
+        this.key_private = key;
+        this.key_public = this._convertToMinCrypt(key);
 
-      this.key_private = key;
-      this.key_public = this._convertToMinCrypt(key);
-
-      localStorage.setObject(RSA_PRIVATE_INDEX, this.key_private);
-      localStorage.setObject(RSA_PUBLIC_INDEX, this.key_public);
-    }
+        this._saveKeys(callback);
+      }
+    }.bind(this));
   };
 
   /**
@@ -106,7 +143,7 @@
    * @param {RSAKey} key_private private key to use and store
    * @private
    */
-  AuthManager.prototype._setKey = function(key_private) {
+  AuthManager.prototype._setKey = function(key_private, callback) {
     if (key_private.constructor !== RSAKey) {
       throw "first arg is not an RSAKey";
     }
@@ -114,8 +151,7 @@
     this.key_private = key_private;
     this.key_public = this._convertToMinCrypt(key_private);
 
-    localStorage.setObject(RSA_PRIVATE_INDEX, this.key_private);
-    localStorage.setObject(RSA_PUBLIC_INDEX, this.key_public);
+    this._saveKeys(callback);
   };
 
   /**
@@ -181,19 +217,18 @@
    *
    * @this {AuthManager}
    */
-  AuthManager.prototype.clearKeys = function() {
+  AuthManager.prototype.clearKeys = function(callback) {
     this.key_private = null;
     this.key_public = null;
 
-    localStorage.removeItem(RSA_PRIVATE_INDEX);
-    localStorage.removeItem(RSA_PUBLIC_INDEX);
+    this.storage.remove([RSA_PRIVATE_INDEX, RSA_PUBLIC_INDEX], callback);
   };
 
   /**
    * Do a raw signature of the data.
    *
    * The format before signature:
-   * 0x00 0x01 0xFF [...] 0xFF 0x00 [data]
+   * 0x00 0x01 0xFF [...] 0xFF 0x00 [ASN.1 preamble] [data]
    *
    * @exception
    * @this {AuthManager}
@@ -210,30 +245,18 @@
     array[0] = 0x00;
     array[1] = 0x01;
 
-    // Subtract the 0x00 separator.
-    var padEnd = totalLen - data.byteLength - 1;
+    // Subtract the preamble and hash length.
+    var padEnd = totalLen - ASN1_PREAMBLE.length - data.byteLength;
     for (var i = 2; i < padEnd; i++) {
       array[i] = 0xFF;
     }
 
-    array[padEnd++] = 0x00;
+    array.set(new Uint8Array(ASN1_PREAMBLE), padEnd);
+    padEnd += ASN1_PREAMBLE.length;
     array.set(new Uint8Array(data), padEnd);
 
     var msg = new BigInteger(Array.apply([], array));
     return new Uint8Array(this.key_private.doPrivate(msg).toByteArray()).buffer;
-  };
-
-  Storage.prototype.setObject = function(key, value) {
-    var hydrate = new Hydrate(new Hydrate.ContextResolver(exports));
-
-    this.setItem(key, hydrate.stringify(value));
-  };
-
-  Storage.prototype.getObject = function(key) {
-    var hydrate = new Hydrate(new Hydrate.ContextResolver(exports));
-
-    var value = this.getItem(key);
-    return value && hydrate.parse(value);
   };
 
   exports.AuthManager = AuthManager;
