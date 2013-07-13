@@ -148,6 +148,15 @@
     delete this.sockets[id];
   };
 
+  AdbServer.prototype.closeSocketsToDevice = function(device) {
+    for (var socketId in this.sockets) {
+      var socket = this.sockets[socketId];
+      if (socket.device === device) {
+        this.closeSocket(socketId);
+      }
+    }
+  };
+
   /**
    * Scans through all the possible device info (vendor and product ID pairs), the devices
    * returned for each, and then returns all the devices that match an ADB descriptor in
@@ -171,6 +180,14 @@
 
     var device = devices.shift();
     this.usb.listInterfaces(device, function(interfaces) {
+      /* There was some kind of error. */
+      if (interfaces === undefined) {
+        this.usb.resetDevice(device, function() {
+          // TODO retry the device
+          console.log("reset device!");
+        });
+      }
+
       for (var intfIndex in interfaces) {
         var intf = interfaces[intfIndex];
         if (intf.interfaceClass === 0xFF && intf.interfaceSubclass === 0x42) {
@@ -340,7 +357,7 @@
     var byteArray = new Uint8Array(data);
     var len = byteArray.length;
     for (var i = 0; i < len; i++) {
-      sum = (sum + byteArray[i] ) % 0xFFFFFFFF;
+      sum = (sum + byteArray[i]) % 0xFFFFFFFF;
     }
     return sum;
   };
@@ -350,7 +367,7 @@
    * @returns {Boolean} true if data checksums correctly.
    */
   AdbPacket.prototype.isDataValid = function() {
-    return this._checksum(this.data) == this.data_check;
+    return this._checksum(this.data) === this.data_check;
   };
 
   /**
@@ -441,8 +458,6 @@
     /** @private */
     this.onCnxn = null;
     /** @private */
-    this.onDisconnect = null;
-    /** @private */
     this.interfaceNumber = interfaceNumber;
     /** @private */
     this.outputDescriptor = outAddress;
@@ -474,9 +489,15 @@
    * Called when device should be disconnected.
    * @private
    */
-  UsbDevice.prototype._disconnect = function() {
-    this.usb.releaseInterface(this.device, this.interfaceNumber, function() {
-      this.onDisconnect();
+  UsbDevice.prototype._disconnect = function(callback) {
+    this.mapper.closeSocketsToDevice(this, function() {
+      this.usb.releaseInterface(this.device, this.interfaceNumber, function() {
+        this.usb.closeDevice(this.device, function() {
+          if (callback !== null) {
+            callback();
+          }
+        }.bind(this));
+      }.bind(this));
     }.bind(this));
   };
 
@@ -717,7 +738,7 @@
       } else {
         callback();
       }
-    });
+    }.bind(this));
   };
 
   /**
@@ -778,7 +799,9 @@
         } else {
           if (!message.isValid()) {
             console.log('invalid magic');
-            this._disconnect();
+            this._disconnect(function() {
+              this.usb.resetDevice(this.device);
+            }.bind(this));
           } else {
             if (message.data_length !== 0) {
               console.log('READ data of len=' + message.data_length);
@@ -794,14 +817,18 @@
                   if (chrome.runtime.lastError) {
                     console.log(chrome.runtime.lastError.message);
                   }
-                  this._disconnect();
+                  this._disconnect(function() {
+                    this.usb.resetDevice(this.device);
+                  }.bind(this));
                 } else {
                   message.data = usbEvent.data;
                   if (message.isDataValid()) {
                     this._receiveMessage(message);
                     this._onDeviceRead();
                   } else {
-                    this._disconnect();
+                    this._disconnect(function() {
+                      this.usb.resetDevice(this.device);
+                    }.bind(this));
                   }
                 }
               }.bind(this));
@@ -921,7 +948,7 @@
   };
 
   AdbSocket.prototype.disconnect = function() {
-    this.tcpConnection.disconnect();
+    this.conn.disconnect();
   };
 
   AdbSocket.prototype._addData = function(text) {
