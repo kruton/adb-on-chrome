@@ -148,7 +148,12 @@
     delete this.sockets[id];
   };
 
-  AdbServer.prototype._scan_devices = function(deviceInfos, filtered, devices, callback) {
+  /**
+   * Scans through all the possible device info (vendor and product ID pairs), the devices
+   * returned for each, and then returns all the devices that match an ADB descriptor in
+   * the callback.
+   */
+  AdbServer.prototype._scanDevices = function(deviceInfos, filtered, devices, callback) {
     /* Base cases. */
     if (devices.length == 0) {
       if (deviceInfos.length == 0) {
@@ -158,7 +163,7 @@
         /* We read all the devices for the previous ID. Scan a new one. */
         var deviceInfo = deviceInfos.shift();
         this.usb.findDevices(deviceInfo, function(devices) {
-          this._scan_devices(deviceInfos, [], devices, callback);
+          this._scanDevices(deviceInfos, [], devices, callback);
         }.bind(this));
       }
       return;
@@ -186,7 +191,7 @@
           }
         }
       }
-      this._scan_devices(deviceInfos, filtered, devices, callback);
+      this._scanDevices(deviceInfos, filtered, devices, callback);
     }.bind(this));
   };
 
@@ -195,7 +200,7 @@
    */
   AdbServer.prototype._rescan = function(callback) {
     var deviceInfos = DEVICES.slice(0);
-    this._scan_devices(deviceInfos, [], [], callback);
+    this._scanDevices(deviceInfos, [], [], callback);
   };
 
   /**
